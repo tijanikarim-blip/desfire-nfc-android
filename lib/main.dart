@@ -20,7 +20,7 @@ class DesFireApp extends StatelessWidget {
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF3B82F6),
         scaffoldBackgroundColor: const Color(0xFF0B0F19),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: const Color(0xFF111827),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 8,
@@ -70,23 +70,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Step 1: Combine RID and UID and pad to 8-byte boundary
       String combinedHex = ridHex + uidHex;
-      int padLen = (8 - (combinedHex.length ~/ 2) % 8) % 8;
+      int bytesLen = combinedHex.length ~/ 2;
+      int padLen = (8 - (bytesLen % 8)) % 8;
       combinedHex += "00" * padLen;
 
       final Uint8List block = Uint8List.fromList(hex.decode(combinedHex));
       final Uint8List keyBytes = Uint8List.fromList(hex.decode(masterKeyHex));
 
       // 3DES handling: if 16 bytes, expand to 24 bytes (K1, K2, K1)
-      Uint8List fullKey = keyBytes;
+      Uint8List fullKeyBytes = keyBytes;
       if (keyBytes.length == 16) {
-        fullKey = Uint8List(24);
-        fullKey.setRange(0, 16, keyBytes);
-        fullKey.setRange(16, 24, keyBytes.sublist(0, 8));
+        fullKeyBytes = Uint8List(24);
+        fullKeyBytes.setRange(0, 16, keyBytes);
+        fullKeyBytes.setRange(16, 24, keyBytes.sublist(0, 8));
       }
 
-      final key = encrypt.Key(fullKey);
-      final encrypter = encrypt.Encrypter(encrypt.DES3(key: key, mode: encrypt.DES3Mode.ecb));
+      final key = encrypt.Key(fullKeyBytes);
+      // In encrypt package, TripleDES is the engine, and we use AESMode.ecb for the mode wrapper
+      final encrypter = encrypt.Encrypter(encrypt.TripleDES(key: key, mode: encrypt.AESMode.ecb));
       
+      // TripleDES ECB doesn't use an IV, but the API requires it (or use empty)
       final encrypted = encrypter.encryptBytes(block, iv: encrypt.IV.fromLength(8));
       
       String res = hex.encode(encrypted.bytes).toUpperCase();

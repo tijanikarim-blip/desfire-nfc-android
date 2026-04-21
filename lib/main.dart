@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:convert/convert.dart';
+import 'package:dart_des/dart_des.dart';
 import 'dart:typed_data';
-import 'package:pointycastle/export.dart' as pc;
 
 void main() {
   runApp(const DesFireApp());
@@ -68,28 +68,31 @@ class _HomeScreenState extends State<HomeScreen> {
       final String ridHex = _ridController.text.replaceAll(" ", "");
       final String uidHex = _uidController.text.replaceAll(" ", "");
 
+      // Step 1: Combine RID and UID and pad to 8-byte boundary
       String combinedHex = ridHex + uidHex;
       int bytesLen = combinedHex.length ~/ 2;
       int padLen = (8 - (bytesLen % 8)) % 8;
-      combinedHex += "0" * padLen;
+      combinedHex += "00" * padLen;
 
       final Uint8List block = Uint8List.fromList(hex.decode(combinedHex));
-      final Uint8List keyBytes = Uint8List.fromList(hex.decode(masterKeyHex));
-
-      Uint8List fullKeyBytes = keyBytes;
+      final keyBytes = Uint8List.fromList(hex.decode(masterKeyHex));
+      
+      // 3DES handling for DESFire: key is often 16 bytes (K1, K2, K1 expansion)
+      // dart_des DES3 expects a 24-byte key for 3DES.
+      List<int> tripleDesKey;
       if (keyBytes.length == 16) {
-        fullKeyBytes = Uint8List(24);
-        fullKeyBytes.setRange(0, 16, keyBytes);
-        fullKeyBytes.setRange(16, 24, keyBytes.sublist(0, 8));
+        tripleDesKey = [...keyBytes, ...keyBytes.sublist(0, 8)];
+      } else {
+        tripleDesKey = keyBytes.toList();
       }
 
-      final cipher = pc.DESedeEngine();
-      final paddedCipher = pc.PaddedBlockCipherImpl(pc.PKCS7Padding(), cipher);
-      paddedCipher.init(true, pc.PaddedBlockCipherParameters<pc.CipherParameters, pc.CipherParameters>(
-        pc.KeyParameter(fullKeyBytes), null));
+      // Initialize DES3 in ECB mode with No Padding for DESFire Diversification
+      final des3 = DES3(key: tripleDesKey, mode: DESMode.ECB, padding: DESPadding.None);
       
-      final encrypted = paddedCipher.process(block);
-      String res = hex.encode(encrypted).toUpperCase();
+      // Encrypt the block
+      final encryptedBytes = des3.encrypt(block);
+      
+      String res = hex.encode(encryptedBytes).toUpperCase();
       if (res.length > 32) res = res.substring(0, 32);
 
       setState(() {

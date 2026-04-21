@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:convert/convert.dart';
 import 'dart:typed_data';
+import 'package:pointycastle/export.dart' as pc;
 
 void main() {
   runApp(const DesFireApp());
@@ -68,16 +68,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final String ridHex = _ridController.text.replaceAll(" ", "");
       final String uidHex = _uidController.text.replaceAll(" ", "");
 
-      // Step 1: Combine RID and UID and pad to 8-byte boundary
       String combinedHex = ridHex + uidHex;
       int bytesLen = combinedHex.length ~/ 2;
       int padLen = (8 - (bytesLen % 8)) % 8;
-      combinedHex += "00" * padLen;
+      combinedHex += "0" * padLen;
 
       final Uint8List block = Uint8List.fromList(hex.decode(combinedHex));
       final Uint8List keyBytes = Uint8List.fromList(hex.decode(masterKeyHex));
 
-      // 3DES handling: if 16 bytes, expand to 24 bytes (K1, K2, K1)
       Uint8List fullKeyBytes = keyBytes;
       if (keyBytes.length == 16) {
         fullKeyBytes = Uint8List(24);
@@ -85,14 +83,13 @@ class _HomeScreenState extends State<HomeScreen> {
         fullKeyBytes.setRange(16, 24, keyBytes.sublist(0, 8));
       }
 
-      final key = encrypt.Key(fullKeyBytes);
-      // In encrypt package, TripleDES is the engine, and we use AESMode.ecb for the mode wrapper
-      final encrypter = encrypt.Encrypter(encrypt.TripleDES(key: key, mode: encrypt.AESMode.ecb));
+      final cipher = pc.DESedeEngine();
+      final paddedCipher = pc.PaddedBlockCipherImpl(pc.PKCS7Padding(), cipher);
+      paddedCipher.init(true, pc.PaddedBlockCipherParameters<pc.CipherParameters, pc.CipherParameters>(
+        pc.KeyParameter(fullKeyBytes), null));
       
-      // TripleDES ECB doesn't use an IV, but the API requires it (or use empty)
-      final encrypted = encrypter.encryptBytes(block, iv: encrypt.IV.fromLength(8));
-      
-      String res = hex.encode(encrypted.bytes).toUpperCase();
+      final encrypted = paddedCipher.process(block);
+      String res = hex.encode(encrypted).toUpperCase();
       if (res.length > 32) res = res.substring(0, 32);
 
       setState(() {
@@ -123,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [const Color(0xFF3B82F6).withOpacity(0.1), Colors.transparent],
+                  colors: [const Color(0xFF3B82F6).withAlpha(25), Colors.transparent],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -174,9 +171,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withAlpha(77),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+                          border: Border.all(color: const Color(0xFF10B981).withAlpha(77)),
                         ),
                         child: Row(
                           children: [
